@@ -1,9 +1,1 @@
-# Client libraries
-
-This directory contains client libraries for the Fuchsia SDK. These libraries
-are part of the Fuchsia API Surface.
-
-In most cases, these libraries are provided for the convenience of developers
-targeting Fuchsia. They typically are not part of the
-[system ABI](../../docs/concepts/packages/system.md). Instead, the system ABI is
-defined by the underlying [FIDL protocols](../fidl/).
+# This is part of the Google Fuchsia SDK, use ./update_fron_source.sh to pull a new version.
