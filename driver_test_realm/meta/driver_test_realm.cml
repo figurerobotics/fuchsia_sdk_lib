@@ -1,0 +1,116 @@
+// Copyright 2021 The Fuchsia Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+{
+    include: [
+        "//sdk/lib/driver_test_realm/meta/realm_builder.shard.cml",
+        "sys/component/realm_builder.shard.cml",
+        "syslog/client.shard.cml",
+    ],
+    program: {
+        runner: "elf",
+        binary: "bin/driver_test_realm",
+    },
+    capabilities: [
+        // From #realm_builder to test.
+        {
+            protocol: [
+                "fuchsia.device.manager.Administrator",
+                "fuchsia.device.manager.SystemStateTransition",
+                "fuchsia.driver.development.DriverDevelopment",
+                "fuchsia.driver.registrar.DriverRegistrar",
+                "fuchsia.driver.test.Realm",
+            ],
+        },
+        {
+            directory: "dev-topological",
+            rights: [ "r*" ],
+            path: "/dev-topological",
+        },
+        {
+            directory: "dev-class",
+            rights: [ "r*" ],
+            path: "/dev-class",
+        },
+
+        // From DTR to #realm_builder
+        {
+            protocol: [
+                "fuchsia.boot.Arguments",
+                "fuchsia.boot.Items",
+                "fuchsia.driver.index.DriverIndex",
+                "fuchsia.kernel.RootJob",
+            ],
+        },
+        {
+            directory: "boot",
+            rights: [ "rx*" ],
+            path: "/boot",
+        },
+        {
+            directory: "pkg_drivers",
+            rights: [ "rx*" ],
+            path: "/pkg_drivers",
+        },
+    ],
+    use: [
+        // Provided by the parent when it wants to override the DTR
+        // implementation. Config |tunnel_boot_items| needs to be set.
+        {
+            protocol: [ "fuchsia.boot.Items" ],
+            from: "parent",
+            availability: "optional",
+        },
+    ],
+    offer: [
+        {
+            protocol: [ "fuchsia.boot.RootResource" ],
+            from: "parent",
+            to: "#realm_builder",
+        },
+        {
+            protocol: [
+                "fuchsia.boot.Arguments",
+                "fuchsia.boot.Items",
+                "fuchsia.device.manager.SystemStateTransition",
+                "fuchsia.kernel.RootJob",
+            ],
+            from: "self",
+            to: "#realm_builder",
+        },
+        {
+            directory: "boot",
+            from: "self",
+            to: "#realm_builder",
+        },
+        {
+            directory: "pkg_drivers",
+            from: "self",
+            to: "#realm_builder",
+        },
+    ],
+    expose: [
+        {
+            directory: [
+                "dev-class",
+                "dev-topological",
+            ],
+            from: "self",
+        },
+        {
+            protocol: [
+                "fuchsia.device.manager.Administrator",
+                "fuchsia.driver.development.DriverDevelopment",
+                "fuchsia.driver.registrar.DriverRegistrar",
+                "fuchsia.driver.test.Realm",
+            ],
+            from: "self",
+        },
+    ],
+    config: {
+        tunnel_boot_items: {
+            type: "bool",
+            mutability: [ "parent" ],
+        },
+    },
+}

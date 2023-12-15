@@ -1,0 +1,64 @@
+# Copyright 2021 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/components.gni")
+import("//build/cpp/sdk_source_set.gni")
+import("//build/test.gni")
+
+sdk_source_set("cpp") {
+  category = "internal"
+  sdk_name = "driver_compat"
+  include_base = "//sdk"
+  sources = [
+    "compat.h",
+    "connect.cc",
+    "connect.h",
+    "device_server.cc",
+    "device_server.h",
+    "service_offers.cc",
+    "service_offers.h",
+  ]
+
+  public_deps = [
+    "//sdk/fidl/fuchsia.driver.compat:fuchsia.driver.compat_cpp",
+    "//sdk/lib/component/incoming/cpp",
+    "//sdk/lib/component/outgoing/cpp",
+    "//sdk/lib/driver/component/cpp:cpp",
+  ]
+}
+
+source_set("logging") {
+  sources = [
+    "logging.cc",
+    "logging.h",
+  ]
+  public_deps = [ "//sdk/lib/driver/logging/cpp" ]
+}
+
+source_set("symbols") {
+  sources = [ "symbols.h" ]
+}
+
+test("test") {
+  output_name = "compat-lib-test"
+  sources = [ "test.cc" ]
+  deps = [
+    ":cpp",
+    ":logging",
+    "//src/storage/lib/vfs/cpp",
+    "//zircon/system/ulib/async-loop:async-loop-cpp",
+    "//zircon/system/ulib/async-loop:async-loop-default",
+    "//zircon/system/ulib/zxtest",
+  ]
+}
+
+fuchsia_unittest_package("test-package") {
+  package_name = "compat-lib-test"
+  deps = [ ":test" ]
+}
+
+group("tests") {
+  testonly = true
+  deps = [ ":test-package" ]
+}

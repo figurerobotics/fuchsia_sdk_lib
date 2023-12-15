@@ -1,0 +1,53 @@
+# Copyright 2022 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/components.gni")
+import("//build/test.gni")
+
+# Service tests (ie only FIDL)
+executable("inspect_service_llcpp_unittests_bin") {
+  testonly = true
+  sources = [ "service_unittests.cc" ]
+  deps = [
+    "//sdk/fidl/fuchsia.component:fuchsia.component_cpp_wire",
+    "//sdk/fidl/fuchsia.component.decl:fuchsia.component.decl_cpp_wire",
+    "//sdk/fidl/fuchsia.diagnostics:fuchsia.diagnostics_hlcpp",
+    "//sdk/fidl/fuchsia.inspect:fuchsia.inspect_cpp_wire",
+    "//sdk/fidl/fuchsia.io:fuchsia.io_cpp_wire",
+    "//sdk/lib/component/incoming/cpp",
+    "//sdk/lib/inspect/component/cpp:inspect_component_cpp",
+    "//sdk/lib/inspect/contrib/cpp:archive_reader",
+    "//sdk/lib/inspect/testing/cpp",
+    "//sdk/lib/sys/cpp",
+    "//sdk/lib/syslog/cpp",
+    "//src/lib/fxl/test:gtest_main",
+    "//src/lib/testing/loop_fixture",
+    "//third_party/googletest:gmock",
+    "//zircon/system/ulib/inspect",
+  ]
+}
+
+executable("program_writing_inspect_bin") {
+  sources = [ "program.cc" ]
+
+  deps = [
+    "//sdk/lib/inspect/component/cpp:inspect_component_cpp",
+    "//zircon/system/ulib/async-loop:async-loop-cpp",
+    "//zircon/system/ulib/async-loop:async-loop-default",
+    "//zircon/system/ulib/inspect",
+  ]
+}
+
+fuchsia_component("program_writing_inspect") {
+  deps = [ ":program_writing_inspect_bin" ]
+  manifest = "meta/program.cml"
+}
+
+fuchsia_unittest_package("inspect_service_llcpp_tests") {
+  manifest = "meta/test.cml"
+  deps = [
+    ":inspect_service_llcpp_unittests_bin",
+    ":program_writing_inspect",
+  ]
+}

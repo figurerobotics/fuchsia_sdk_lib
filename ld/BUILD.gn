@@ -1,0 +1,312 @@
+# Copyright 2023 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/cpp/library_headers.gni")
+import("//build/cpp/verify_public_symbols.gni")
+import("//build/toolchain/ifs_extract.gni")
+import("//build/toolchain/ifs_shared_library.gni")
+import("//build/toolchain/toolchain_environment.gni")
+import("//build/toolchain/zircon/user_basic_redirect.gni")
+
+# TODO(fxbug.dev/121817): This will be used for the static library of support
+# code.  It provides access to additional <lib/ld/...> headers for support code
+# that isn't itself part of of the passive ABI.
+library_headers("headers") {
+  headers = [
+    "lib/ld/load-module.h",
+    "lib/ld/load.h",
+    "lib/ld/memory.h",
+  ]
+
+  public_deps = [ ":abi-headers" ]
+}
+
+# This is the linkable target for using the passive ABI.
+# It gives access to the passive ABI dynamic linkage symbols
+# and to the header files declaring the `ld::abi` namespace.
+ifs_shared_library("ld") {
+  abi = "ld.ifs"
+  public_deps = [ ":abi-headers" ]
+}
+
+library_headers("abi-headers") {
+  headers = [
+    "lib/ld/abi.h",
+    "lib/ld/module.h",
+  ]
+
+  public_deps = [
+    "//sdk/lib/stdcompat",
+    "//src/lib/elfldltl:headers",
+  ]
+}
+
+# This is the SONAME reflecting the passive ABI defined here.
+# It has to match what's in ld.ifs and in ld::abi::kSoname (<lib/ld/abi.h>).
+abi_soname = "ld.so.1"
+config("abi-soname") {
+  ldflags = [ "-Wl,-soname=$abi_soname" ]
+}
+
+config("abi-interp") {
+  ldflags = [ "-Wl,-dynamic-linker=${toolchain_variant.libprefix}$abi_soname" ]
+}
+
+# `verify_ld_abi(ld) {}` defines "$ld.verify-abi" to check that the
+# shared_library(ld) or loadable_module(ld) matches the passive ABI.
+template("verify_ld_abi") {
+  ld_target = target_name
+  extract_target = "$ld_target.ifs"
+  verify_target = "$ld_target.verify-abi"
+  ifs_file = "$target_out_dir/$extract_target"
+
+  ifs_extract(extract_target) {
+    visibility = [ ":*" ]
+    forward_variables_from(invoker, [ "testonly" ])
+    outputs = [ ifs_file ]
+    deps = [ ":$ld_target" ]
+  }
+
+  verify_public_symbols(verify_target) {
+    visibility = [ ":*" ]
+    forward_variables_from(invoker, [ "testonly" ])
+    deps = [ ":$extract_target" ]
+    current = ifs_file
+    reference = "ld.ifs"
+    library_name = get_label_info(":$ld_target", "label_with_toolchain")
+  }
+}
+
+# There's no real difference between a shared library and a loadable module
+# with a SONAME, but loadable_module() does its own variant selection.  Since
+# the stub ld.so is really just a data ABI image, there's no meaningful sense
+# in which it could be in the same variant as its users.
+loadable_module("ld-stub") {
+  configs += [
+    "//build/config/fuchsia:no_cpp_standard_library",
+    "//build/config/zircon:nolibc",
+    ":abi-soname",
+  ]
+  deps = [ ":abi" ]
+
+  # Since it has no C++ code (only a data definition), it doesn't really matter
+  # for this to use the user.basic build environment as the startup dynamic
+  # linker must.  But we don't want it to have any instrumentation hair that
+  # might be generated even with no C++ functions.
+  exclude_toolchain_tags = [ "instrumented" ]
+}
+
+verify_ld_abi("ld-stub") {
+}
+
+source_set("abi") {
+  visibility = [ ":*" ]
+
+  public = [ "mutable-abi.h" ]
+  sources = [ "mutable-abi.cc" ]
+  deps = [ ":headers" ]
+}
+
+source_set("bootstrap") {
+  visibility = [ ":*" ]
+
+  public = [ "bootstrap.h" ]
+  public_deps = [
+    ":headers",
+    "//src/lib/elfldltl",
+
+    # TODO(fxbug.dev/130542): This gets users of bootstrap.h the config that
+    # plumbs the HAVE_LLVM_PROFDATA predefine used there.
+    "//src/lib/llvm-profdata",
+  ]
+}
+
+# This is a proper archive library of the bits from libc and the stubs that can
+# be used in the standalone implementation.  Having the source_set() targets as
+# direct or transitive deps not via a `complete_static_lib=true` archive would
+# eagerly link unused code into the standalone binary and rely on linker GC to
+# remove it, which is suboptimal.
+static_library("standalone") {
+  visibility = [ "./*" ]
+
+  complete_static_lib = true
+
+  sources = [ "standalone-assert.cc" ]
+  deps = [
+    "//zircon/system/public",
+    "//zircon/system/ulib/c/stdlib:hermetic",
+    "//zircon/system/ulib/c/string:hermetic",
+  ]
+
+  if (is_linux) {
+    deps += [ ":linux-syscalls" ]
+  }
+
+  public_configs = [ ":standalone.config" ]
+}
+
+config("standalone.config") {
+  visibility = [ "./*" ]
+  ldflags = []
+  if (toolchain_environment != "user.basic") {
+    # The user.basic environment doesn't have implicit dependencies or libc.
+    # Other environments like host need the compiler driver's defaults disabled
+    # to build something that doesn't use the system libc.
+    ldflags += [
+      "-nostartfiles",
+      "-nolibc",
+    ]
+  }
+  if (!is_gcc) {
+    # The standard profiling runtime can't be used in the minimal standalone
+    # context of ld.so.
+    #
+    # TODO(fxbug.dev/130542): The instrumentation works fine to collect data,
+    # but the data needs to be plumbed out somewhere using a custom
+    # runtime. For now, the data is just ignored.
+    ldflags += [ "-noprofilelib" ]
+  }
+}
+
+source_set("posix-header") {
+  public = [ "posix.h" ]
+}
+
+source_set("zircon-header") {
+  public = [ "zircon.h" ]
+}
+
+shared_library("ld-startup") {
+  configs += [ ":abi-soname" ]
+
+  sources = [ "startup-load.h" ]
+  deps = [
+    ":abi",
+    ":allocator",
+    ":bootstrap",
+    ":diagnostics",
+    ":standalone",
+    "//src/lib/elfldltl",
+    "//zircon/system/ulib/fbl",
+  ]
+
+  if (is_fuchsia) {
+    sources += [
+      "procargs.cc",
+      "zircon-startup.S",
+      "zircon-startup.cc",
+    ]
+    deps += [
+      ":zircon-diagnostics",
+      ":zircon-header",
+      "//sdk/lib/stdcompat",
+      "//src/lib/llvm-profdata",
+      "//src/zircon/lib/zircon",
+      "//zircon/kernel/lib/arch",
+      "//zircon/system/ulib/processargs",
+      "//zircon/system/ulib/zircon-internal",
+      "//zircon/system/ulib/zx",
+    ]
+  } else {
+    sources += [
+      "posix-startup.S",
+      "posix-startup.cc",
+    ]
+    deps += [
+      ":posix-diagnostics",
+      ":posix-header",
+      "//zircon/kernel/lib/arch:headers",
+    ]
+
+    # There is no way to get the data out anyway.
+    configs += [ "//build/config:no_profile" ]
+  }
+
+  output_path = "$root_out_dir/lib$target_name.so"
+
+  metadata = {
+    distribution_entries = [
+      {
+        destination = "lib/${toolchain_variant.libprefix}$abi_soname"
+        source = rebase_path(output_path, root_build_dir)
+        label = get_label_info(target_name, "label_with_toolchain")
+      },
+    ]
+
+    # This is collected by test:ld-startup-test-switches.rsp.  The
+    # user_basic_redirect may wind up in a different variant than the one
+    # requested, if the test's variant isn't available in user.basic, so we
+    # don't know statically which libprefix the test should load from.
+    ld_startup_test_switches =
+        [ "'-DLD_STARTUP_TEST_LIBPREFIX=\"${toolchain_variant.libprefix}\"'" ]
+  }
+}
+
+source_set("diagnostics") {
+  visibility = [ ":*" ]
+  public = [ "diagnostics.h" ]
+  public_deps = [ "//src/lib/elfldltl" ]
+  sources = [ "diagnostics.cc" ]
+}
+
+source_set("posix-diagnostics") {
+  visibility = [ ":*" ]
+  sources = [ "posix-diagnostics.cc" ]
+  deps = [
+    ":diagnostics",
+    ":posix-header",
+    "//zircon/system/ulib/c/stdio:snprintf",
+    "//zircon/system/ulib/c/stdio/printf_core:wrapper",
+  ]
+}
+
+source_set("zircon-diagnostics") {
+  visibility = [ ":*" ]
+  sources = [ "zircon-diagnostics.cc" ]
+  deps = [
+    ":diagnostics",
+    ":zircon-header",
+    "//zircon/system/ulib/c/stdio/printf_core:wrapper",
+    "//zircon/system/ulib/zx",
+  ]
+}
+
+source_set("allocator") {
+  visibility = [ ":*" ]
+  public = [ "allocator.h" ]
+  public_deps = [
+    ":diagnostics",
+    "//src/lib/trivial-allocator",
+  ]
+  deps = [ "//src/lib/trivial-allocator:stub-delete" ]
+}
+
+source_set("linux-syscalls") {
+  visibility = [ ":*" ]
+  sources = [ "linux-syscalls.cc" ]
+  include_dirs = [ "//third_party/linux-syscall-support/src" ]
+}
+
+user_basic_redirect("ld-startup.basic") {
+  public_deps = [ ":ld-startup" ]
+}
+
+verify_ld_abi("ld-startup.basic") {
+}
+
+user_basic_redirect("verify-abi") {
+  public_deps = [
+    ":ld-startup.basic.verify-abi",
+    ":ld-stub.verify-abi",
+  ]
+}
+
+group("tests") {
+  testonly = true
+
+  deps = [
+    ":verify-abi",
+    "test:tests",
+  ]
+}

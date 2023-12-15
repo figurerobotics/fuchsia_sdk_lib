@@ -1,0 +1,120 @@
+# Copyright 2020 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/components.gni")
+import("//build/cpp/sdk_source_set.gni")
+
+group("tests") {
+  testonly = true
+  deps = [ ":driver-component-cpp-tests" ]
+}
+
+# This library is available on Fuchsia API level 13 and above.
+sdk_source_set("cpp") {
+  category = "partner"
+  sdk_name = "driver_component_cpp"
+
+  include_base = "//sdk"
+  public_configs = [ "//sdk/config" ]
+
+  sources = [
+    "composite_node_spec.h",
+    "driver_base.cc",
+    "driver_base.h",
+    "driver_export.h",
+    "internal/basic_factory.h",
+    "internal/lifecycle.cc",
+    "internal/lifecycle.h",
+    "internal/start_args.h",
+    "internal/symbols.h",
+    "node_add_args.cc",
+    "node_add_args.h",
+    "prepare_stop_completer.cc",
+    "prepare_stop_completer.h",
+    "start_completer.cc",
+    "start_completer.h",
+  ]
+
+  sdk_headers_for_internal_use = [
+    "internal/basic_factory.h",
+    "internal/lifecycle.cc",
+    "internal/lifecycle.h",
+    "internal/start_args.h",
+    "internal/symbols.h",
+  ]
+
+  public_deps = [
+    "//sdk/fidl/fuchsia.component.decl:fuchsia.component.decl_cpp",
+    "//sdk/fidl/fuchsia.driver.framework:fuchsia.driver.framework_cpp",
+    "//sdk/lib/driver/incoming/cpp",
+    "//sdk/lib/driver/logging/cpp",
+    "//sdk/lib/driver/outgoing/cpp",
+    "//sdk/lib/driver/runtime:driver_runtime_cpp",
+    "//sdk/lib/driver/symbols",
+    "//sdk/lib/fidl",
+  ]
+}
+
+source_set("test_base") {
+  sources = [
+    "tests/test_base.cc",
+    "tests/test_base.h",
+  ]
+
+  public_deps = [
+    ":cpp",
+    "//sdk/fidl/fuchsia.io:fuchsia.io_hlcpp",
+    "//sdk/lib/fit-promise",
+  ]
+}
+
+executable("cpp_test") {
+  testonly = true
+  sources = [
+    "tests/driver_base_test.cc",
+    "tests/driver_fidl_test.cc",
+    "tests/logger_test.cc",
+    "tests/namespace_test.cc",
+    "tests/node_add_args_test.cc",
+    "tests/start_args_test.cc",
+    "tests/test_driver.cc",
+    "tests/test_driver.h",
+  ]
+
+  deps = [
+    ":cpp",
+    ":test_base",
+    "tests/fidl:fuchsia.driver.component.test_cpp_driver_wire",
+    "tests/fidl:fuchsia.driver.component.test_cpp_wire",
+    "//sdk/fidl/fuchsia.device.fs:fuchsia.device.fs_hlcpp",
+    "//sdk/fidl/fuchsia.io:fuchsia.io_hlcpp",
+    "//sdk/fidl/fuchsia.logger:fuchsia.logger_hlcpp",
+    "//sdk/lib/async_patterns/testing/cpp",
+    "//sdk/lib/component/outgoing/cpp",
+    "//sdk/lib/driver/devfs/cpp",
+    "//sdk/lib/driver/runtime:driver_runtime_cpp",
+    "//sdk/lib/driver/testing/cpp",
+    "//sdk/lib/fidl/cpp",
+    "//src/devices/lib/driver:driver_runtime",
+    "//src/diagnostics/lib/cpp-log-decoder:lib",
+    "//src/lib/diagnostics/accessor2logger",
+    "//src/lib/fsl",
+    "//src/lib/fxl/test:gtest_main",
+    "//src/lib/testing/loop_fixture",
+    "//src/lib/testing/predicates",
+    "//third_party/rapidjson",
+    "//zircon/system/ulib/async-loop:async-loop-cpp",
+    "//zircon/system/ulib/async-loop:async-loop-default",
+    "//zircon/system/ulib/zx",
+  ]
+
+  # TODO(fxbug.dev/94768): This target uses mutable tables which are deprecated,
+  # rather than builders.
+  configs += [ "//build/cpp:fidl-wire-deprecated-mutable-tables" ]
+}
+
+fuchsia_unittest_package("driver-component-cpp-tests") {
+  manifest = "meta/cpp_test.cml"
+  deps = [ ":cpp_test" ]
+}

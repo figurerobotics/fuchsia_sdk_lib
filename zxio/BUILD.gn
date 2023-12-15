@@ -1,0 +1,148 @@
+# Copyright 2019 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/cpp/extract_imported_symbols.gni")
+import("//build/cpp/library_headers.gni")
+import("//build/cpp/verify_imported_symbols.gni")
+import("//build/cpp/verify_public_symbols.gni")
+
+library_headers("headers") {
+  headers = [
+    "lib/zxio/cpp/vector.h",
+    "lib/zxio/null.h",
+    "lib/zxio/ops.h",
+    "lib/zxio/posix_mode.h",
+    "lib/zxio/bsdsocket.h",
+    "lib/zxio/types.h",
+    "lib/zxio/zxio.h",
+  ]
+}
+
+# This is a header-only library that provides type safe C++ wrappers around the
+# zxio_create_with_type() entry point.
+library_headers("create_with_type") {
+  headers = [ "lib/zxio/cpp/create_with_type.h" ]
+
+  public_deps = [
+    ":headers",
+    "//sdk/fidl/fuchsia.io:fuchsia.io_cpp_wire",
+    "//zircon/system/ulib/zx",
+  ]
+}
+
+# This header exposes implementation details of the zxio library in order to
+# facilitate moving logic from fdio into zxio. It should not be used outside of
+# these two libraries.
+library_headers("inception") {
+  headers = [
+    "lib/zxio/cpp/inception.h",
+    "lib/zxio/cpp/transitional.h",
+  ]
+
+  public_deps = [
+    ":headers",
+
+    # <lib/zxio/cpp/inception.h> has #include <fidl/fuchsia.io/cpp/wire.h>.
+    "//sdk/fidl/fuchsia.io:fuchsia.io_cpp_wire",
+  ]
+
+  visibility = [
+    "//sdk/lib/fdio/*",
+    "//sdk/lib/zxio/*",
+  ]
+}
+
+source_set("zxio") {
+  sources = [
+    "create.cc",
+    "debuglog.cc",
+    "dgram_cache.cc",
+    "get_vmo.cc",
+    "inception.cc",
+    "null.cc",
+    "pipe.cc",
+    "remote.cc",
+    "socket.cc",
+    "socket_address.cc",
+    "transitional.cc",
+    "vmo.cc",
+    "zxio.cc",
+  ]
+  public_deps = [ ":headers" ]
+  deps = [
+    "//sdk/fidl/fuchsia.device:fuchsia.device_cpp_wire",
+    "//sdk/fidl/fuchsia.hardware.pty:fuchsia.hardware.pty_cpp_wire",
+    "//sdk/fidl/fuchsia.io:fuchsia.io_cpp_wire",
+    "//sdk/fidl/fuchsia.net.name:fuchsia.net.name_cpp_wire",
+    "//sdk/fidl/fuchsia.posix.socket:fuchsia.posix.socket_cpp_wire",
+    "//sdk/fidl/fuchsia.posix.socket.packet:fuchsia.posix.socket.packet_cpp_wire",
+    "//sdk/fidl/fuchsia.posix.socket.raw:fuchsia.posix.socket.raw_cpp_wire",
+    "//sdk/lib/stdcompat",
+    "//sdk/lib/zxio:inception",
+    "//src/connectivity/network/netstack/udp_serde",
+    "//zircon/system/ulib/zx",
+    "//zircon/third_party/ulib/safemath",
+  ]
+}
+
+shared_library("zxio_standalone") {
+  visibility = [ ":*" ]
+
+  public_deps = [ ":zxio" ]
+
+  configs += [ "//build/config/fuchsia:static_cpp_standard_library" ]
+
+  version_script = "zxio_standalone.ld"
+  inputs = [ version_script ]
+  ldflags =
+      [ "-Wl,--version-script=" + rebase_path(version_script, root_build_dir) ]
+}
+
+shared_out_dir =
+    get_label_info(":zxio_standalone($shlib_toolchain)", "root_out_dir")
+zxio_standalone_library = "$shared_out_dir/libzxio_standalone.so"
+
+generated_imported_symbols_list =
+    "$target_gen_dir/zxio_standalone.imported_symbols.list"
+generated_public_symbols_list = "$shared_out_dir/libzxio_standalone.ifs"
+
+extract_imported_symbols("zxio_standalone_extract_imported_symbols") {
+  library = zxio_standalone_library
+  symbols = generated_imported_symbols_list
+
+  deps = [ ":zxio_standalone($shlib_toolchain)" ]
+}
+
+verify_imported_symbols("zxio_standalone_verify_imported_symbols") {
+  current = generated_imported_symbols_list
+  allowlist = rebase_path("zxio_standalone.imported_symbols.allowlist")
+  library_name = "zxio_standalone"
+
+  deps = [ ":zxio_standalone_extract_imported_symbols" ]
+}
+
+verify_public_symbols("zxio_standalone_verify_public_symbols") {
+  current = generated_public_symbols_list
+  reference = rebase_path("zxio_standalone.public_symbols.ifs")
+  library_name = "zxio_standalone"
+
+  deps = [ ":zxio_standalone($shlib_toolchain)" ]
+}
+
+group("standalone") {
+  public_deps = [ ":zxio_standalone" ]
+
+  deps = [ ":zxio_standalone_verify_public_symbols" ]
+
+  # Only verify the imported symbols in uninstrumented variants as some variants
+  # such as ASan / UBSan insert additional runtime dependencies.
+  if (!toolchain_variant.instrumented) {
+    deps += [ ":zxio_standalone_verify_imported_symbols" ]
+  }
+}
+
+group("tests") {
+  testonly = true
+  deps = [ "tests" ]
+}

@@ -1,0 +1,186 @@
+# Copyright 2021 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/components.gni")
+import("//build/drivers.gni")
+import("//sdk/lib/driver_test_realm/driver_test_realm.gni")
+import("//tools/cmc/build/expect_includes.gni")
+
+group("driver_test_realm") {
+  testonly = true
+  deps = [
+    ":client_includes",
+    ":driver_manager_test",
+    ":driver_test_realm_component",
+    ":fake_resolver",
+    ":test_realm_manifest",
+    "//src/devices/bin/devfs:component-for-test",
+    "//src/devices/bin/driver-index:base-driver-manifest",
+    "//src/devices/bin/driver-index:boot-driver-manifest",
+    "//src/devices/bin/driver-index:component",
+    "//src/devices/bin/driver-index:test_config",
+    "//src/devices/bin/driver_host:driver_host",
+    "//src/devices/bin/driver_host2:component",
+  ]
+}
+
+group("realm_builder_version") {
+  testonly = true
+  deps = [
+    ":driver_manager_test",
+    ":driver_test_realm_component",
+    ":fake_resolver",
+    ":realm_builder_includes",
+    ":test_realm_manifest",
+    "//src/devices/bin/devfs:component-for-test",
+    "//src/devices/bin/driver-index:base-driver-manifest",
+    "//src/devices/bin/driver-index:boot-driver-manifest",
+    "//src/devices/bin/driver-index:component",
+    "//src/devices/bin/driver-index:test_config",
+    "//src/devices/bin/driver_host:driver_host",
+    "//src/devices/bin/driver_host2:component",
+  ]
+}
+
+group("tests") {
+  testonly = true
+  deps = [
+    ":package",
+    "platform:tests",
+    "simple:tests",
+    "tests",
+  ]
+}
+
+executable("bin") {
+  output_name = "driver_test_realm"
+  testonly = true
+  sources = [ "driver_test_realm.cc" ]
+  deps = [
+    ":driver_test_realm_config",
+    "//sdk/fidl/fuchsia.boot:fuchsia.boot_cpp_wire",
+    "//sdk/fidl/fuchsia.component.resolution:fuchsia.component.resolution_cpp_wire",
+    "//sdk/fidl/fuchsia.device.manager:fuchsia.device.manager_cpp_wire",
+    "//sdk/fidl/fuchsia.driver.development:fuchsia.driver.development_cpp_wire",
+    "//sdk/fidl/fuchsia.driver.framework:fuchsia.driver.framework_cpp_wire",
+    "//sdk/fidl/fuchsia.driver.registrar:fuchsia.driver.registrar_cpp_wire",
+    "//sdk/fidl/fuchsia.driver.test:fuchsia.driver.test_cpp",
+    "//sdk/fidl/fuchsia.io:fuchsia.io_cpp_wire",
+    "//sdk/fidl/fuchsia.kernel:fuchsia.kernel_cpp_wire",
+    "//sdk/fidl/fuchsia.pkg:fuchsia.pkg_cpp_wire",
+    "//sdk/lib/component/incoming/cpp",
+    "//sdk/lib/component/outgoing/cpp",
+    "//sdk/lib/sys/component/cpp/testing:cpp",
+    "//sdk/lib/syslog/cpp",
+    "//sdk/lib/zbi-format",
+    "//src/lib/ddk",
+    "//src/lib/ddk:ddk-metadata-headers",
+    "//src/lib/fxl",
+    "//src/storage/lib/vfs/cpp",
+    "//zircon/system/ulib/async-loop:async-loop-cpp",
+    "//zircon/system/ulib/mock-boot-arguments",
+  ]
+
+  defines =
+      [ "USE_DRIVER_FRAMEWORK_V2_DEFAULT=$use_driver_framework_v2_default" ]
+}
+
+fuchsia_component_manifest("manifest") {
+  component_name = "driver_test_realm"
+  manifest = "meta/driver_test_realm.cml"
+}
+
+fuchsia_structured_config_cpp_elf_lib("driver_test_realm_config") {
+  cm_label = ":manifest"
+}
+
+fuchsia_structured_config_values("driver_test_realm_config_default") {
+  cm_label = ":manifest"
+  values = {
+    tunnel_boot_items = false
+  }
+}
+
+fuchsia_component("driver_test_realm_component") {
+  testonly = true
+  cm_label = ":manifest"
+  deps = [
+    ":bin",
+    ":driver_test_realm_config_default",
+  ]
+}
+
+executable("fake_resolver_bin") {
+  output_name = "fake_resolver"
+  testonly = true
+  sources = [ "fake_resolver.cc" ]
+  data_deps = [ "fake_driver:driver_package" ]
+  deps = [
+    "//sdk/fidl/fuchsia.component.resolution:fuchsia.component.resolution_cpp_wire",
+    "//sdk/fidl/fuchsia.io:fuchsia.io_cpp_wire",
+    "//sdk/lib/component/incoming/cpp",
+    "//sdk/lib/component/outgoing/cpp",
+    "//sdk/lib/syslog/cpp",
+    "//zircon/system/ulib/async-loop:async-loop-cpp",
+    "//zircon/system/ulib/async-loop:async-loop-default",
+  ]
+}
+
+fuchsia_component("fake_resolver") {
+  testonly = true
+  manifest = "meta/fake_resolver.cml"
+  deps = [ ":fake_resolver_bin" ]
+}
+
+fuchsia_component_manifest("driver_manager_manifest") {
+  testonly = true
+  component_name = "driver_manager_test"
+  manifest = "meta/driver_manager_test.cml"
+}
+
+fuchsia_structured_config_values("test_config") {
+  testonly = true
+  cm_label = ":driver_manager_manifest"
+  values = {
+    set_root_driver_host_critical = false
+    delay_fallback_until_base_drivers_indexed = true
+    suspend_timeout_fallback = true
+    verbose = false
+    use_driver_framework_v2 = false
+    driver_host_crash_policy = "restart-driver-host"
+    root_driver = "fuchsia-boot:///#meta/test-parent-sys.cm"
+  }
+}
+
+fuchsia_component("driver_manager_test") {
+  testonly = true
+  cm_label = ":driver_manager_manifest"
+  deps = [
+    ":test_config",
+    "//src/devices/bin/driver_manager",
+  ]
+}
+
+fuchsia_component_manifest("test_realm_manifest") {
+  testonly = true
+  component_name = "test_realm"
+  manifest = "meta/test_realm.cml"
+}
+
+expect_includes("client_includes") {
+  includes = [ "meta/client.shard.cml" ]
+}
+
+expect_includes("realm_builder_includes") {
+  includes = [ "meta/realm_builder.shard.cml" ]
+}
+
+fuchsia_package("package") {
+  testonly = true
+  package_name = "driver_test_realm"
+  deps = [
+    ":driver_test_realm",
+    "//src/devices/misc/drivers/test-parent",
+  ]
+}

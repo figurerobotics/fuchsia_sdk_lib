@@ -1,0 +1,54 @@
+# Copyright 2023 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/cpp/sdk_source_set.gni")
+
+source_set("test_node") {
+  testonly = true
+
+  sources = [
+    "test_node.cc",
+    "test_node.h",
+  ]
+
+  deps = [
+    "//sdk/lib/driver/runtime:driver_runtime_cpp",
+    "//zircon/system/ulib/async-default",
+  ]
+
+  public_deps =
+      [ "//sdk/fidl/fuchsia.driver.framework:fuchsia.driver.framework_cpp" ]
+}
+
+sdk_source_set("cpp") {
+  category = "partner"
+  sdk_name = "driver_testing_cpp"
+  include_base = "//sdk"
+  public_configs = [ "//sdk/config" ]
+
+  sources = [
+    "driver_lifecycle.cc",
+    "driver_lifecycle.h",
+    "driver_runtime.cc",
+    "driver_runtime.h",
+    "environment_variables.cc",
+    "test_environment.cc",
+    "test_environment.h",
+    "test_node.cc",
+    "test_node.h",
+  ]
+
+  deps = [
+    "//sdk/lib/driver/runtime/testing/cpp",
+    "//zircon/system/ulib/async-default",
+  ]
+
+  public_deps = [
+    "//sdk/lib/driver/component/cpp",
+    "//sdk/lib/driver/runtime:driver_runtime_cpp",
+    "//sdk/lib/driver/runtime:driver_runtime_env_cpp",
+    "//sdk/lib/driver/runtime:driver_runtime_testing",
+    "//src/devices/bin/driver_runtime",
+  ]
+}
